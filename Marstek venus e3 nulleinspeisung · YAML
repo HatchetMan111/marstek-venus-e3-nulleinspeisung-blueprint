@@ -1,568 +1,187 @@
-blueprint:
-  name: "🔋 Marstek Venus E3 – Nulleinspeisung & Eigenverbrauchsoptimierung"
-  description: >
-    **Dynamische Nulleinspeisung für den Marstek Venus E3 Heimspeicher.**
+# 🔋 Marstek Venus E3 – Nulleinspeisung Blueprint
+### Home Assistant Blueprint für dynamische Eigenverbrauchsoptimierung
 
+[![HA Blueprint Import](https://img.shields.io/badge/Home%20Assistant-Blueprint%20importieren-41BDF5?style=for-the-badge&logo=home-assistant)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2FHatchetMan111%2Fmarstek-venus-e3-nulleinspeisung-blueprint%2Fmain%2Fblueprints%2Fautomation%2Fmarstek_venus_e3_nulleinspeisung.yaml)
 
-    Die Automation überwacht die aktuelle Netzleistung und regelt
-    Lade- und Entladeleistung automatisch – Einspeisung ins Netz
-    wird verhindert, Eigenverbrauch maximiert.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![HA Version](https://img.shields.io/badge/Home%20Assistant-2024.6%2B-blue)](https://www.home-assistant.io/)
+[![Developed by](https://img.shields.io/badge/Entwickelt%20von-LichtValleyApps.de-FFD234?style=flat)](https://lichtvalleyapps.de)
 
+---
 
-    **Enthaltene Schutzfunktionen:**
+## 📋 Was macht dieser Blueprint?
 
-    • ⚠️ Tiefentladeschutz (konfigurierbarer Mindest-SoC)
+Dieser Blueprint regelt den **Marstek Venus E3 Heimspeicher** vollautomatisch, sodass du **keinen Strom ins Netz einspeist** und deinen Eigenverbrauch maximierst.
 
-    • 🌙 Nacht-Reserve (Mindestladung bis zum Morgen erhalten)
+Er misst kontinuierlich die aktuelle Netzleistung und passt die Lade- und Entladeleistung des Speichers in Echtzeit an.
 
-    • 🔒 Netzladen-Sperre (Batterie nicht aus dem Netz laden)
+---
 
-    • 🎯 Totzone / Hysterese (Regler-Stabilität)
+## ✅ Funktionen
 
+| Funktion | Beschreibung |
+|---|---|
+| ⚡ Nulleinspeisung | Entladung folgt dem Hausverbrauch – kein Strom geht ans Netz |
+| ☀️ Überschussladen | Solarüberschuss wird automatisch in die Batterie gespeichert |
+| ⚠️ Tiefentladeschutz | Entladung stoppt unter konfigurierbarem Mindest-SoC |
+| 🌙 Nacht-Reserve | Hält SoC-Reserve für den Morgen zurück |
+| 🔒 Netzladen-Sperre | Batterie wird nicht teuer aus dem Netz geladen |
+| 🎯 Totzone/Hysterese | Verhindert ständiges Reglern bei stabiler Lage |
+| 🛠️ Diagnose-Logging | Optionale Log-Ausgabe für Fehlersuche |
 
-    **Voraussetzungen:**
+---
 
-    • Netzmessgerät mit HA-Integration (z.B. Shelly EM, Eastron SDM, ISKRA)
+## 🔧 Voraussetzungen
 
-    • Marstek Venus E3 in Home Assistant integriert (Modbus/RS485)
+- **Home Assistant** 2024.6 oder neuer
+- **Marstek Venus E3** in Home Assistant integriert (Modbus/RS485-Integration)
+- **Netzmessgerät** mit HA-Integration, das Netzbezug und Einspeisung misst
 
+### Kompatible Netzmessgeräte (Beispiele)
 
-    ⚡ Entwickelt von [LichtValleyApps.de](https://lichtvalleyapps.de) –
-    SmartHome & Eigenverbrauchsoptimierung
+| Gerät | Typ | Hinweis |
+|---|---|---|
+| Shelly EM / 3EM | WLAN-Stromzähler | Direkt kompatibel |
+| Eastron SDM630 | RS485-Zähler | Direkt kompatibel |
+| Holley DTZ541 | Smart Meter | Direkt kompatibel |
+| ISKRA MT174 | Smart Meter | Direkt kompatibel |
+| **Tibber Pulse** | IR-Lesekopf | ⚠️ Siehe Hinweis unten |
+| Discovergy | Cloud-API | Funktioniert, höhere Latenz |
 
-  domain: automation
-  author: "LichtValleyApps.de"
-  homeassistant:
-    min_version: "2024.6.0"
+#### ⚠️ Tibber Pulse – Wichtiger Hinweis
 
-  input:
+Tibber Pulse liefert oft **zwei separate Sensoren** (Bezug + Einspeisung). Du brauchst einen kombinierten Sensor. Füge diesen Template-Sensor in deine `configuration.yaml` ein:
 
-    # ================================================================
-    # SEKTION 1: NETZMESSUNG
-    # ================================================================
-    section_grid:
-      name: "📡 Netz-Messung"
-      icon: "mdi:transmission-tower"
-      description: >
-        Wähle deinen Netzleistungs-Sensor. Dieser misst, ob du gerade
-        Strom aus dem Netz beziehst (positiv) oder einspeist (negativ).
-      input:
-        grid_power_sensor:
-          name: "Netzleistung Sensor (W)"
-          description: >
-            Sensor für die aktuelle Netzleistung in Watt.
-            ✅ Positiv = Netzbezug (du kaufst Strom).
-            ✅ Negativ = Netzeinspeisung (du gibst Strom ab).
-            Typische Geräte: Shelly EM, Shelly 3EM, Eastron SDM630,
-            Holley DTZ541, ISKRA MT174, Tibber Pulse.
-          selector:
-            entity:
-              domain: sensor
-              device_class: power
+```yaml
+template:
+  - sensor:
+      - name: "Netzleistung Netto"
+        unique_id: "netzleistung_netto_tibber"
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        state: >
+          {{ states('sensor.power_consumption') | float(0)
+           - states('sensor.power_production') | float(0) }}
+```
 
-    # ================================================================
-    # SEKTION 2: MARSTEK ENTITÄTEN
-    # ================================================================
-    section_battery:
-      name: "🔋 Marstek Venus E3 – Entitäten"
-      icon: "mdi:battery-charging-80"
-      description: >
-        Weise die Entitäten deines Marstek Venus E3 zu.
-        Diese findest du unter Einstellungen → Geräte & Dienste → Marstek.
-      input:
-        marstek_soc_sensor:
-          name: "Batterie-Ladezustand (SoC)"
-          description: >
-            Sensor: 'Batterie-Ladezustand' in Prozent.
-            Wird für Tiefentladeschutz und Nacht-Reserve verwendet.
-          selector:
-            entity:
-              domain: sensor
-              device_class: battery
+> Ersetze die Entity-IDs durch deine tatsächlichen Tibber-Sensornamen.  
+> Danach HA neu laden – dann erscheint `sensor.netzleistung_netto` zur Auswahl im Blueprint.
 
-        marstek_charge_power:
-          name: "Ladeleistung einstellen"
-          description: >
-            Number-Entity: 'Ladeleistung einstellen'.
-            Setzt die aktive Ladeleistung in Watt (0 = kein Laden).
-          selector:
-            entity:
-              domain: number
+---
 
-        marstek_discharge_power:
-          name: "Entladeleistung einstellen"
-          description: >
-            Number-Entity: 'Entladeleistung einstellen'.
-            Setzt die aktive Entladeleistung in Watt (0 = kein Entladen).
-          selector:
-            entity:
-              domain: number
+## 🚀 Installation
 
-        marstek_mode_eigenverbrauch:
-          name: "Modus Eigenverbrauch (Switch)"
-          description: >
-            Switch-Entity: 'Modus Eigenverbrauch'.
-            Wird zu Beginn jedes Regelzyklus eingeschaltet.
-          selector:
-            entity:
-              domain: switch
+### Option 1: Ein-Klick-Import (empfohlen)
 
-        marstek_rs485_mode:
-          name: "RS485-Steuermodus (Select)"
-          description: >
-            Select-Entity: 'RS485-Steuermodus'.
-            Muss auf 'RS485' stehen, damit Home Assistant die
-            Leistung steuern kann. Wird automatisch gesetzt.
-          selector:
-            entity:
-              domain: select
+[![Zu Home Assistant hinzufügen](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2FHatchetMan111%2Fmarstek-venus-e3-nulleinspeisung-blueprint%2Fmain%2Fblueprints%2Fautomation%2Fmarstek_venus_e3_nulleinspeisung.yaml)
 
-    # ================================================================
-    # SEKTION 3: REGELPARAMETER
-    # ================================================================
-    section_regulation:
-      name: "⚙️ Regelparameter"
-      icon: "mdi:tune-variant"
-      description: >
-        Kernparameter des Nulleinspeisungs-Reglers.
-        Empfohlene Standardwerte sind voreingestellt.
-      input:
-        target_grid_power:
-          name: "Ziel-Netzleistung (W)"
-          description: >
-            Die angestrebte Netzleistung in Watt.
-            0 W = echte Nulleinspeisung.
-            30–50 W = empfohlener Sicherheitspuffer,
-            verhindert ungewolltes Einspeisen bei Messungenauigkeiten.
-          default: 30
-          selector:
-            number:
-              min: -100
-              max: 300
-              step: 10
-              unit_of_measurement: "W"
-              mode: slider
+### Option 2: Manuell
 
-        dead_band:
-          name: "Totzone / Hysterese (W)"
-          description: >
-            Abweichung vom Zielwert, innerhalb derer NICHT geregelt wird.
-            Verhindert ständiges Hin- und Herschalten des Reglers.
-            Empfehlung: 30–50 W.
-          default: 40
-          selector:
-            number:
-              min: 10
-              max: 200
-              step: 10
-              unit_of_measurement: "W"
-              mode: slider
+1. YAML-Datei herunterladen: [`marstek_venus_e3_nulleinspeisung.yaml`](blueprints/automation/marstek_venus_e3_nulleinspeisung.yaml)
+2. Datei nach `config/blueprints/automation/lichtvalleyapps/` kopieren
+3. Home Assistant neu laden: **Entwicklertools → YAML neu laden → Blueprints**
+4. **Einstellungen → Automatisierungen → + Erstellen → Aus Blueprint**
 
-        regulation_gain:
-          name: "Regelungsverstärkung (Faktor)"
-          description: >
-            Wie stark auf Abweichungen reagiert wird.
-            1.0 = direkte 1:1 Kompensation der Abweichung.
-            1.2 = 20% aggressiver (schnellere Reaktion, mehr Überschwingen).
-            Empfehlung: 1.0–1.2.
-          default: 1.1
-          selector:
-            number:
-              min: 0.5
-              max: 2.0
-              step: 0.1
-              mode: slider
+---
 
-        max_charge_power:
-          name: "Maximale Ladeleistung (W)"
-          description: >
-            Höchstwert der gesetzten Ladeleistung.
-            Marstek Venus E3 max.: 2500 W.
-          default: 2400
-          selector:
-            number:
-              min: 100
-              max: 2500
-              step: 50
-              unit_of_measurement: "W"
-              mode: slider
+## ⚙️ Konfiguration
 
-        max_discharge_power:
-          name: "Maximale Entladeleistung (W)"
-          description: >
-            Höchstwert der gesetzten Entladeleistung.
-            Marstek Venus E3 max.: 2500 W.
-          default: 2400
-          selector:
-            number:
-              min: 100
-              max: 2500
-              step: 50
-              unit_of_measurement: "W"
-              mode: slider
+Nach dem Import die Automatisierung anlegen und folgende Werte zuweisen:
 
-        min_soc_protection:
-          name: "Minimaler SoC – Tiefentladeschutz (%)"
-          description: >
-            Unter diesem Ladezustand wird die Entladung gestoppt.
-            Schützt die Batterie vor Tiefentladung.
-            Empfehlung: 10–15 %.
-          default: 10
-          selector:
-            number:
-              min: 5
-              max: 30
-              step: 1
-              unit_of_measurement: "%"
-              mode: slider
+### Pflichtfelder
 
-    # ================================================================
-    # SEKTION 4: NACHT-MODUS
-    # ================================================================
-    section_night:
-      name: "🌙 Nacht-Modus & Reserve"
-      icon: "mdi:weather-night"
-      collapsed: true
-      description: >
-        Optionale Nacht-Reserve: Hält einen Mindest-SoC zurück,
-        damit morgens noch Energie für den Morgenverbrauch vorhanden ist.
-      input:
-        night_reserve_enabled:
-          name: "Nacht-Reserve aktivieren"
-          description: >
-            Wenn aktiv: Batterie wird nachts nicht unter den
-            Nacht-Reserve-SoC entladen.
-          default: true
-          selector:
-            boolean:
+| Feld | Beschreibung |
+|---|---|
+| Netzleistung Sensor | Dein Stromzähler-Sensor (positiv = Bezug, negativ = Einspeisung) |
+| Batterie-Ladezustand | `sensor.batterie_ladezustand` vom Marstek |
+| Ladeleistung einstellen | `number.ladeleistung_einstellen` vom Marstek |
+| Entladeleistung einstellen | `number.entladeleistung_einstellen` vom Marstek |
+| Modus Eigenverbrauch | `switch.modus_eigenverbrauch` vom Marstek |
+| RS485-Steuermodus | `select.rs485_steuermodus` vom Marstek |
 
-        night_min_soc:
-          name: "Nacht-Reserve SoC (%)"
-          description: >
-            Mindest-Ladezustand während der Nacht.
-            Empfehlung: 20–30 % (ca. 1–1,5 kWh für Grundlast).
-          default: 20
-          selector:
-            number:
-              min: 0
-              max: 80
-              step: 5
-              unit_of_measurement: "%"
-              mode: slider
+### Empfohlene Einstellungen (Standardwerte)
 
-        night_start_hour:
-          name: "Nacht beginnt – Stunde (0–23)"
-          description: "Ab dieser Uhrzeit gilt der Nacht-Modus."
-          default: 22
-          selector:
-            number:
-              min: 18
-              max: 23
-              step: 1
-              unit_of_measurement: "h"
-              mode: slider
+| Parameter | Standard | Empfehlung |
+|---|---|---|
+| Ziel-Netzleistung | 30 W | 0–50 W (Sicherheitspuffer) |
+| Totzone | 40 W | 30–60 W |
+| Regelungsverstärkung | 1.1 | 1.0–1.2 |
+| Max. Ladeleistung | 2400 W | ≤ 2500 W |
+| Max. Entladeleistung | 2400 W | ≤ 2500 W |
+| Tiefentladeschutz | 10 % | 10–15 % |
+| Nacht-Reserve | 20 % | 15–30 % |
 
-        night_end_hour:
-          name: "Nacht endet – Stunde (0–12)"
-          description: "Bis zu dieser Uhrzeit gilt der Nacht-Modus."
-          default: 6
-          selector:
-            number:
-              min: 0
-              max: 12
-              step: 1
-              unit_of_measurement: "h"
-              mode: slider
+---
 
-    # ================================================================
-    # SEKTION 5: ERWEITERTE OPTIONEN
-    # ================================================================
-    section_advanced:
-      name: "🔒 Erweiterte Optionen"
-      icon: "mdi:shield-check-outline"
-      collapsed: true
-      input:
-        prevent_grid_charging:
-          name: "Netzladen verhindern"
-          description: >
-            Wenn aktiv: Die Batterie wird NICHT aus dem Netz geladen,
-            solange Netzbezug > 50 W herrscht.
-            Verhindert unnötige Kosten und schont die Batterie.
-          default: true
-          selector:
-            boolean:
+## 🧠 Wie funktioniert die Regellogik?
 
-        enable_logging:
-          name: "Diagnose-Logging aktivieren"
-          description: >
-            Schreibt Regelungsaktionen ins Home Assistant Log.
-            Nützlich für Fehlersuche und Optimierung.
-            Im Normalbetrieb deaktiviert lassen.
-          default: false
-          selector:
-            boolean:
+```
+Alle 20 Sekunden / bei Sensor-Änderung:
+│
+├─ SoC ≤ Mindest-SoC?          → 🛑 Entladen stopp, 100 W Laden
+├─ Nacht & SoC ≤ Nacht-Reserve? → 🌙 Alles pausieren
+├─ Netz > Ziel + Totzone?       → ⚡ Entladeleistung erhöhen
+├─ Netz < Ziel - Totzone?       → 🔋 Ladeleistung erhöhen
+└─ In der Totzone?              → 🎯 Sanfte 30%-Feinjustierung
+```
 
+---
 
-# ================================================================
-# VARIABLEN (interne Kurzbezeichnungen)
-# ================================================================
-variables:
-  v_grid:           !input grid_power_sensor
-  v_soc:            !input marstek_soc_sensor
-  v_charge_ent:     !input marstek_charge_power
-  v_discharge_ent:  !input marstek_discharge_power
-  v_target:         !input target_grid_power
-  v_dead_band:      !input dead_band
-  v_gain:           !input regulation_gain
-  v_max_charge:     !input max_charge_power
-  v_max_discharge:  !input max_discharge_power
-  v_min_soc:        !input min_soc_protection
-  v_night_on:       !input night_reserve_enabled
-  v_night_min:      !input night_min_soc
-  v_night_start:    !input night_start_hour
-  v_night_end:      !input night_end_hour
-  v_no_grid_chg:    !input prevent_grid_charging
-  v_logging:        !input enable_logging
+## 🗂️ Repo-Struktur
 
+```
+📁 marstek-venus-e3-nulleinspeisung-blueprint/
+  📄 README.md
+  📄 LICENSE
+  📁 blueprints/
+    📁 automation/
+      📄 marstek_venus_e3_nulleinspeisung.yaml
+```
 
-# ================================================================
-# TRIGGER: Netzleistungs-Änderung ODER alle 20 Sekunden
-# ================================================================
-trigger:
-  - platform: state
-    entity_id: !input grid_power_sensor
-    for:
-      seconds: 2
-  - platform: time_pattern
-    seconds: "/20"
+---
 
+## 🐛 Fehlerbehebung
 
-# ================================================================
-# BEDINGUNG: Sensoren müssen verfügbar sein
-# ================================================================
-condition:
-  - condition: template
-    value_template: >
-      {{ states(v_grid) not in ['unavailable', 'unknown', 'none']
-         and states(v_soc)  not in ['unavailable', 'unknown', 'none'] }}
+**Blueprint-Import schlägt fehl:**
+Stelle sicher, dass du `my.home-assistant.io` in deiner HA-Instanz aktiviert hast:  
+Einstellungen → System → Home Assistant Cloud → Lokale Instanz-URL
 
+**RS485-Steuermodus funktioniert nicht:**
+Prüfe den exakten Options-Namen in deiner Marstek-Integration unter  
+Entwicklertools → Zustände → nach `rs485` suchen.
 
-# ================================================================
-# AKTION: Hauptregelung
-# ================================================================
-action:
+**Regler schwingt (lädt/entlädt ständig abwechselnd):**
+Totzone auf 60–80 W erhöhen, Verstärkung auf 0.9 reduzieren.
 
-  # ---- Aktuelle Messwerte einlesen ----
-  - variables:
-      grid_w:       "{{ states(v_grid)         | float(0) | round(1) }}"
-      soc_pct:      "{{ states(v_soc)          | float(0) }}"
-      charge_w:     "{{ states(v_charge_ent)   | float(0) }}"
-      discharge_w:  "{{ states(v_discharge_ent)| float(0) }}"
-      deviation:    "{{ (states(v_grid) | float(0) | round(1)) - v_target }}"
-      h_now:        "{{ now().hour }}"
-      is_night: >
-        {% if v_night_start > v_night_end %}
-          {{ now().hour >= v_night_start or now().hour < v_night_end }}
-        {% else %}
-          {{ now().hour >= v_night_start and now().hour < v_night_end }}
-        {% endif %}
+**Einspeisung trotz aktivem Blueprint:**
+Ziel-Netzleistung auf 50 W setzen, Totzone auf 50 W.
 
-  # ---- Eigenverbrauch-Modus sicherstellen ----
-  - service: switch.turn_on
-    target:
-      entity_id: !input marstek_mode_eigenverbrauch
-    continue_on_error: true
+---
 
-  # ---- RS485-Steuermodus auf RS485 setzen ----
-  - service: select.select_option
-    target:
-      entity_id: !input marstek_rs485_mode
-    data:
-      option: "RS485"
-    continue_on_error: true
+## 📊 Changelog
 
-  # ================================================================
-  # PRIORISIERTE REGELLOGIK
-  # ================================================================
-  - choose:
+| Version | Datum | Änderung |
+|---|---|---|
+| 1.0.0 | 2025-04 | Erstveröffentlichung |
 
-      # ------------------------------------------------------------
-      # PRIORITÄT 1: TIEFENTLADESCHUTZ
-      # SoC ≤ Mindest-SoC → Entladen sofort stoppen, minimal laden
-      # ------------------------------------------------------------
-      - conditions:
-          - condition: template
-            value_template: "{{ soc_pct <= v_min_soc }}"
-        sequence:
-          - service: number.set_value
-            target:
-              entity_id: !input marstek_discharge_power
-            data:
-              value: "0"
-          - service: number.set_value
-            target:
-              entity_id: !input marstek_charge_power
-            data:
-              value: "100"
-          - if:
-              - condition: template
-                value_template: "{{ v_logging }}"
-            then:
-              - service: system_log.write
-                data:
-                  message: >
-                    [LVA Nulleinspeisung] ⚠️ TIEFENTLADESCHUTZ AKTIV –
-                    SoC {{ soc_pct }}% ≤ Mindest-SoC {{ v_min_soc }}%.
-                    Entladung gestoppt, Minimalladung (100 W) aktiv.
-                  level: warning
+---
 
-      # ------------------------------------------------------------
-      # PRIORITÄT 2: NACHT-RESERVE
-      # Nacht & SoC ≤ Nacht-Reserve → Entladen pausieren
-      # ------------------------------------------------------------
-      - conditions:
-          - condition: template
-            value_template: >
-              {{ v_night_on
-                 and is_night
-                 and v_night_min > 0
-                 and soc_pct <= v_night_min }}
-        sequence:
-          - service: number.set_value
-            target:
-              entity_id: !input marstek_discharge_power
-            data:
-              value: "0"
-          - service: number.set_value
-            target:
-              entity_id: !input marstek_charge_power
-            data:
-              value: "0"
-          - if:
-              - condition: template
-                value_template: "{{ v_logging }}"
-            then:
-              - service: system_log.write
-                data:
-                  message: >
-                    [LVA Nulleinspeisung] 🌙 NACHT-RESERVE –
-                    SoC {{ soc_pct }}% ≤ Nacht-Reserve {{ v_night_min }}%.
-                    Entladen pausiert.
-                  level: info
+## 📄 Lizenz
 
-      # ------------------------------------------------------------
-      # PRIORITÄT 3: NETZBEZUG ZU HOCH
-      # Abweichung > Totzone & SoC OK → Entladeleistung erhöhen
-      # ------------------------------------------------------------
-      - conditions:
-          - condition: template
-            value_template: >
-              {{ deviation > v_dead_band and soc_pct > v_min_soc }}
-        sequence:
-          - variables:
-              new_discharge: >
-                {{ [ [discharge_w + (deviation * v_gain) | round(0) | int,
-                      v_max_discharge] | min,
-                     0 ] | max | int }}
-          - service: number.set_value
-            target:
-              entity_id: !input marstek_discharge_power
-            data:
-              value: "{{ new_discharge }}"
-          - service: number.set_value
-            target:
-              entity_id: !input marstek_charge_power
-            data:
-              value: "0"
-          - if:
-              - condition: template
-                value_template: "{{ v_logging }}"
-            then:
-              - service: system_log.write
-                data:
-                  message: >
-                    [LVA Nulleinspeisung] ⚡ ENTLADEN –
-                    Netz={{ grid_w }} W | Abw.={{ deviation | round(0) }} W |
-                    SoC={{ soc_pct }}% →
-                    Entladeleistung={{ new_discharge }} W gesetzt.
-                  level: info
+MIT License – Details siehe [LICENSE](LICENSE)
 
-      # ------------------------------------------------------------
-      # PRIORITÄT 4: ÜBERSCHUSS / EINSPEISUNG
-      # Abweichung < -Totzone → Ladeleistung erhöhen
-      # ------------------------------------------------------------
-      - conditions:
-          - condition: template
-            value_template: "{{ deviation < (v_dead_band * -1) }}"
-        sequence:
-          - variables:
-              excess_w: "{{ (deviation | abs) | round(0) | int }}"
-              raw_charge: >
-                {{ [ [charge_w + (excess_w * v_gain) | round(0) | int,
-                      v_max_charge] | min,
-                     0 ] | max | int }}
-              # Netzladen-Sperre: Wenn Netz > 50 W und Sperre aktiv → 0 W
-              new_charge: >
-                {{ 0 if (v_no_grid_chg and grid_w > 50) else raw_charge }}
-          - service: number.set_value
-            target:
-              entity_id: !input marstek_charge_power
-            data:
-              value: "{{ new_charge }}"
-          - service: number.set_value
-            target:
-              entity_id: !input marstek_discharge_power
-            data:
-              value: "0"
-          - if:
-              - condition: template
-                value_template: "{{ v_logging }}"
-            then:
-              - service: system_log.write
-                data:
-                  message: >
-                    [LVA Nulleinspeisung] 🔋 LADEN –
-                    Netz={{ grid_w }} W | Überschuss={{ excess_w }} W |
-                    Netzladen-Sperre={{ v_no_grid_chg }} →
-                    Ladeleistung={{ new_charge }} W gesetzt.
-                  level: info
+---
 
-      # ------------------------------------------------------------
-      # PRIORITÄT 5: IN DER TOTZONE
-      # Kleine Abweichung → Sanfte Feinjustierung (30% der Abweichung)
-      # ------------------------------------------------------------
-      - conditions:
-          - condition: template
-            value_template: "{{ deviation | abs <= v_dead_band }}"
-        sequence:
-          - variables:
-              fine: "{{ (deviation * 0.3) | round(0) | int }}"
-          - choose:
-              # Leicht zu viel Netzbezug → minimal mehr entladen
-              - conditions:
-                  - condition: template
-                    value_template: "{{ fine > 15 and soc_pct > v_min_soc }}"
-                sequence:
-                  - service: number.set_value
-                    target:
-                      entity_id: !input marstek_discharge_power
-                    data:
-                      value: >
-                        {{ [ [discharge_w + fine, v_max_discharge] | min,
-                             0 ] | max | int }}
-              # Leicht zu viel Einspeisung → minimal mehr laden
-              - conditions:
-                  - condition: template
-                    value_template: "{{ fine < -15 }}"
-                sequence:
-                  - service: number.set_value
-                    target:
-                      entity_id: !input marstek_charge_power
-                    data:
-                      value: >
-                        {{ [ [charge_w + (fine | abs), v_max_charge] | min,
-                             0 ] | max | int }}
+## ⚡ Entwickelt von
 
-# Nur eine Instanz gleichzeitig, überlaufende Trigger verwerfen
-mode: single
-max_exceeded: silent
+**[LichtValleyApps.de](https://lichtvalleyapps.de)**  
+SmartHome-Integration & Eigenverbrauchsoptimierung  
+Für Privathäuser, Höfe und Kleinunternehmen
+
+> 💡 *LichtValleyApps führt keine Elektroinstallationsarbeiten durch –  
+> ausschließlich SmartHome-Integration zur Eigenverbrauchsoptimierung.*
+
+---
+
+*Gefällt dir der Blueprint? ⭐ Star auf GitHub und teile ihn in der HA Community!*
