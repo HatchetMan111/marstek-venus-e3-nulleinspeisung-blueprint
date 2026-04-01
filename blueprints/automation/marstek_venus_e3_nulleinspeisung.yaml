@@ -1,40 +1,35 @@
 blueprint:
-  name: "🔋 Marstek Venus E3 – Nulleinspeisung & Eigenverbrauchsoptimierung"
+  name: "🔋 Marstek Venus E3 – Nulleinspeisung (Force Mode + RS485)"
   description: >
-    **Dynamische Nulleinspeisung für den Marstek Venus E3 Heimspeicher.**
+    **Dynamische Nulleinspeisung für den Marstek Venus E3.**
 
 
-    Die Automation überwacht die aktuelle Netzleistung und regelt
-    Lade- und Entladeleistung automatisch – Einspeisung ins Netz
-    wird verhindert, Eigenverbrauch maximiert.
+    Regelt Laden/Entladen über den **Force Mode** und den **RS485-Steuermodus**
+    – beides wird automatisch gesetzt. Ohne diese beiden Entitäten funktioniert
+    die Steuerung über Home Assistant nicht.
 
 
-    **Enthaltene Schutzfunktionen:**
+    **Regelablauf:**
 
-    • ⚠️ Tiefentladeschutz (konfigurierbarer Mindest-SoC)
+    • Netzbezug → Force Mode = Entladen, Entladeleistung wird schrittweise erhöht
 
-    • 🌙 Nacht-Reserve (Mindestladung bis zum Morgen erhalten)
+    • Einspeisung → Force Mode = Laden, Ladeleistung wird schrittweise erhöht
 
-    • 🔒 Netzladen-Sperre (Batterie nicht aus dem Netz laden)
-
-    • 🎯 Totzone / Hysterese (Regler-Stabilität)
+    • In der Totzone → Force Mode = Standby (Marstek regelt selbst im Eigenverbrauch)
 
 
-    **Kompatible Netzmessgeräte:**
+    **Schutzfunktionen:**
 
-    Shelly EM/3EM, Eastron SDM630, Holley DTZ541, ISKRA MT174,
-    Tibber Pulse (mit Template-Sensor – siehe README), Discovergy
+    • ⚠️ Tiefentladeschutz (Mindest-SoC)
 
+    • 🌙 Nacht-Reserve
 
-    **Voraussetzungen:**
+    • 🔒 Netzladen-Sperre
 
-    • Netzmessgerät mit HA-Integration
-
-    • Marstek Venus E3 in Home Assistant integriert (Modbus/RS485)
+    • 🎯 Konfigurierbares Deadband
 
 
-    ⚡ Entwickelt von [LichtValleyApps.de](https://lichtvalleyapps.de) –
-    SmartHome & Eigenverbrauchsoptimierung
+    ⚡ Entwickelt von [LichtValleyApps.de](https://lichtvalleyapps.de)
 
   domain: automation
   author: "LichtValleyApps.de"
@@ -44,30 +39,82 @@ blueprint:
 
   input:
 
+    # ================================================================
+    # SEKTION 1: NETZMESSUNG
+    # ================================================================
     section_grid:
       name: "📡 Netz-Messung"
       icon: "mdi:transmission-tower"
       description: >
-        Sensor für die aktuelle Netzleistung in Watt.
-        ✅ Positiv = Netzbezug | ✅ Negativ = Netzeinspeisung.
-        Tibber Pulse: Template-Sensor nötig – siehe README.
+        Wähle deinen Messtyp.
+        Option A: Ein Sensor mit positiven/negativen Werten (Shelly EM, Eastron).
+        Option B: Zwei getrennte Sensoren für Bezug und Einspeisung
+        (z.B. Tibber Pulse, ISKRA, Discovergy).
       input:
-        grid_power_sensor:
-          name: "Netzleistung Sensor (W)"
+        grid_sensor_mode:
+          name: "Sensor-Typ"
           description: >
-            Sensor mit positivem Wert bei Netzbezug,
-            negativem Wert bei Einspeisung.
+            KOMBINIERT = Ein Sensor (positiv=Bezug, negativ=Einspeisung).
+            GETRENNT = Zwei Sensoren (Bezug + Einspeisung, beide immer positiv).
+          default: "kombiniert"
+          selector:
+            select:
+              options:
+                - label: "Kombiniert (ein Sensor, +/- Vorzeichen)"
+                  value: "kombiniert"
+                - label: "Getrennt (Tibber Pulse, zwei Sensoren)"
+                  value: "getrennt"
+
+        grid_power_combined:
+          name: "Netzleistung – Kombinierter Sensor (W)"
+          description: >
+            Nur bei Typ KOMBINIERT. Positiv = Bezug, negativ = Einspeisung.
+            Nicht benötigt bei Typ GETRENNT → beliebige Entität wählen.
           selector:
             entity:
               domain: sensor
               device_class: power
 
+        grid_power_import:
+          name: "Netzbezug-Sensor – Eingang (W oder kW)"
+          description: >
+            Nur bei Typ GETRENNT. Immer positiver Wert, wenn du Strom kaufst.
+            Nicht benötigt bei Typ KOMBINIERT → beliebige Entität wählen.
+          selector:
+            entity:
+              domain: sensor
+
+        grid_power_export:
+          name: "Netzeinspeisung-Sensor – Ausgang (W oder kW)"
+          description: >
+            Nur bei Typ GETRENNT. Immer positiver Wert, wenn du einspeist.
+            Nicht benötigt bei Typ KOMBINIERT → beliebige Entität wählen.
+          selector:
+            entity:
+              domain: sensor
+
+        grid_unit_factor:
+          name: "Einheit des Netz-Sensors"
+          description: >
+            Watt (W) = Faktor 1.
+            Kilowatt (kW) = Faktor 1000 – wird automatisch umgerechnet.
+          default: 1
+          selector:
+            select:
+              options:
+                - label: "Watt (W) – kein Umrechnen"
+                  value: 1
+                - label: "Kilowatt (kW) → mal 1000"
+                  value: 1000
+
+    # ================================================================
+    # SEKTION 2: MARSTEK ENTITÄTEN
+    # ================================================================
     section_battery:
       name: "🔋 Marstek Venus E3 – Entitäten"
       icon: "mdi:battery-charging-80"
       description: >
-        Alle Entitäten findest du unter:
-        Einstellungen → Geräte & Dienste → Marstek → [dein Gerät]
+        Alle Entitäten unter: Einstellungen → Geräte & Dienste → Marstek → [Gerät].
       input:
         marstek_soc_sensor:
           name: "Batterie-Ladezustand (SoC %)"
@@ -78,79 +125,152 @@ blueprint:
               device_class: battery
 
         marstek_charge_power:
-          name: "Ladeleistung einstellen (Number)"
-          description: "Number-Entity: 'Ladeleistung einstellen' in Watt"
+          name: "Ladeleistung einstellen (Number W)"
+          description: "Number: 'Ladeleistung einstellen'"
           selector:
             entity:
               domain: number
 
         marstek_discharge_power:
-          name: "Entladeleistung einstellen (Number)"
-          description: "Number-Entity: 'Entladeleistung einstellen' in Watt"
+          name: "Entladeleistung einstellen (Number W)"
+          description: "Number: 'Entladeleistung einstellen'"
           selector:
             entity:
               domain: number
 
-        marstek_mode_eigenverbrauch:
-          name: "Modus Eigenverbrauch (Switch)"
-          description: "Switch-Entity: 'Modus Eigenverbrauch'"
-          selector:
-            entity:
-              domain: switch
-
-        marstek_rs485_mode:
-          name: "RS485-Steuermodus (Select)"
+        marstek_force_mode:
+          name: "⚡ Force Mode (Select) – PFLICHT"
           description: >
-            Select-Entity: 'RS485-Steuermodus'.
-            Wird automatisch auf 'RS485' gesetzt.
+            Select: 'Force Mode' mit Optionen Laden / Entladen / Standby.
+            Dies ist der Hauptschalter – ohne diese Entität funktioniert
+            die Steuerung NICHT.
           selector:
             entity:
               domain: select
 
+        marstek_rs485_mode:
+          name: "🔌 RS485-Steuermodus (Select) – PFLICHT"
+          description: >
+            Select: 'RS485-Steuermodus'.
+            Muss auf RS485 stehen, sonst ignoriert der Marstek alle Befehle.
+            Wird automatisch aktiviert.
+          selector:
+            entity:
+              domain: select
+
+    # ================================================================
+    # SEKTION 3: FORCE MODE OPTIONSNAMEN
+    # ================================================================
+    section_force_mode_options:
+      name: "🎛️ Force Mode – Optionsnamen"
+      icon: "mdi:format-list-bulleted"
+      collapsed: true
+      description: >
+        Die exakten Optionsnamen deiner Force-Mode-Select-Entität.
+        Prüfe sie unter Entwicklertools → Zustände.
+        Standard: Laden / Entladen / Standby.
+      input:
+        force_mode_charge:
+          name: "Option für Laden"
+          description: "Exakter Text der Laden-Option (Groß/Kleinschreibung beachten)"
+          default: "Laden"
+          selector:
+            text:
+
+        force_mode_discharge:
+          name: "Option für Entladen"
+          description: "Exakter Text der Entladen-Option"
+          default: "Entladen"
+          selector:
+            text:
+
+        force_mode_standby:
+          name: "Option für Standby"
+          description: "Exakter Text der Standby-Option (Marstek regelt selbst)"
+          default: "Standby"
+          selector:
+            text:
+
+        rs485_option_name:
+          name: "Option für RS485-Steuermodus"
+          description: "Exakter Text der RS485-Option im RS485-Steuermodus-Select"
+          default: "RS485"
+          selector:
+            text:
+
+    # ================================================================
+    # SEKTION 4: REGELPARAMETER
+    # ================================================================
     section_regulation:
       name: "⚙️ Regelparameter"
       icon: "mdi:tune-variant"
-      description: "Empfohlene Standardwerte sind voreingestellt."
+      description: "Schrittweise Regelung – sanft und stabil."
       input:
         target_grid_power:
           name: "Ziel-Netzleistung (W)"
           description: >
-            Angestrebter Netzwert. 0 W = echte Nulleinspeisung.
-            Empfehlung: 30–50 W als Sicherheitspuffer.
+            Angestrebter Netzwert. Empfehlung: 20–50 W Sicherheitspuffer.
           default: 30
           selector:
             number:
-              min: -100
-              max: 300
-              step: 10
-              unit_of_measurement: "W"
-              mode: slider
-
-        dead_band:
-          name: "Totzone / Hysterese (W)"
-          description: >
-            Toleranzbereich um den Zielwert – kein Regeln innerhalb.
-            Empfehlung: 40–60 W. Bei Reglerschwingen erhöhen.
-          default: 40
-          selector:
-            number:
-              min: 10
+              min: -50
               max: 200
               step: 10
               unit_of_measurement: "W"
               mode: slider
 
-        regulation_gain:
-          name: "Regelungsverstärkung (Faktor)"
+        dead_band:
+          name: "Totzone / Deadband (W)"
           description: >
-            1.0 = direkte Kompensation | 1.2 = 20% aggressiver.
-            Bei Überschwingen auf 0.9 reduzieren.
-          default: 1.0
+            Bereich um den Zielwert, in dem auf Standby gewechselt wird.
+            Empfehlung: 30–60 W. Bei Schwingen erhöhen.
+          default: 50
           selector:
             number:
-              min: 0.5
-              max: 2.0
-              step: 0.1
+              min: 10
+              max: 300
+              step: 10
+              unit_of_measurement: "W"
+              mode: slider
+
+        step_discharge:
+          name: "Schrittweite Entladen (W)"
+          description: >
+            Um wie viel Watt die Entladeleistung pro Zyklus erhöht/reduziert wird.
+            Empfehlung: 80–150 W.
+          default: 100
+          selector:
+            number:
+              min: 20
+              max: 500
+              step: 10
+              unit_of_measurement: "W"
+              mode: slider
+
+        step_charge:
+          name: "Schrittweite Laden (W)"
+          description: "Empfehlung: 70–120 W."
+          default: 80
+          selector:
+            number:
+              min: 20
+              max: 500
+              step: 10
+              unit_of_measurement: "W"
+              mode: slider
+
+        delay_after_step:
+          name: "Verzögerung nach Regelschritt (Sekunden)"
+          description: >
+            Wartezeit nach jedem Schritt, damit der Marstek reagieren kann.
+            Empfehlung: 5–10 s.
+          default: 7
+          selector:
+            number:
+              min: 2
+              max: 30
+              step: 1
+              unit_of_measurement: "s"
               mode: slider
 
         max_charge_power:
@@ -179,7 +299,7 @@ blueprint:
 
         min_soc_protection:
           name: "Tiefentladeschutz – Mindest-SoC (%)"
-          description: "Unter diesem SoC wird Entladung gestoppt. Empfehlung: 10–15 %."
+          description: "Unter diesem SoC → Force Mode Standby, kein Entladen."
           default: 10
           selector:
             number:
@@ -189,11 +309,25 @@ blueprint:
               unit_of_measurement: "%"
               mode: slider
 
+        max_soc_charging:
+          name: "Ladelimit – Max-SoC (%)"
+          description: "Über diesem SoC wird nicht mehr geladen."
+          default: 95
+          selector:
+            number:
+              min: 50
+              max: 100
+              step: 1
+              unit_of_measurement: "%"
+              mode: slider
+
+    # ================================================================
+    # SEKTION 5: NACHT-MODUS
+    # ================================================================
     section_night:
       name: "🌙 Nacht-Modus & Reserve"
       icon: "mdi:weather-night"
       collapsed: true
-      description: "Hält nachts einen Mindest-SoC zurück für den Morgenverbrauch."
       input:
         night_reserve_enabled:
           name: "Nacht-Reserve aktivieren"
@@ -203,7 +337,7 @@ blueprint:
 
         night_min_soc:
           name: "Nacht-Reserve SoC (%)"
-          description: "Empfehlung: 20–30 % (ca. 1–1,5 kWh Grundlast)"
+          description: "Mindest-SoC nachts. Empfehlung: 20–30 %."
           default: 20
           selector:
             number:
@@ -214,7 +348,7 @@ blueprint:
               mode: slider
 
         night_start_hour:
-          name: "Nacht beginnt (Stunde 0–23)"
+          name: "Nacht beginnt (Stunde)"
           default: 22
           selector:
             number:
@@ -225,7 +359,7 @@ blueprint:
               mode: slider
 
         night_end_hour:
-          name: "Nacht endet (Stunde 0–12)"
+          name: "Nacht endet (Stunde)"
           default: 6
           selector:
             number:
@@ -235,6 +369,9 @@ blueprint:
               unit_of_measurement: "h"
               mode: slider
 
+    # ================================================================
+    # SEKTION 6: ERWEITERTE OPTIONEN
+    # ================================================================
     section_advanced:
       name: "🔒 Erweiterte Optionen"
       icon: "mdi:shield-check-outline"
@@ -242,30 +379,45 @@ blueprint:
       input:
         prevent_grid_charging:
           name: "Netzladen verhindern"
-          description: "Batterie wird NICHT aus dem Netz geladen. Spart Kosten, schont die Batterie."
+          description: "Kein Laden wenn Netzbezug > 50 W (kein teurer Strom in die Batterie)."
           default: true
           selector:
             boolean:
 
         enable_logging:
-          name: "Diagnose-Logging aktivieren"
-          description: "Log-Ausgabe für Fehlersuche. Im Normalbetrieb deaktiviert lassen."
+          name: "Diagnose-Logging"
+          description: "Schreibt jeden Regelschritt ins HA-Log. Für Fehlersuche."
           default: false
           selector:
             boolean:
 
 
+# ================================================================
+# VARIABLEN
+# ================================================================
 variables:
-  v_grid:          !input grid_power_sensor
+  v_mode:          !input grid_sensor_mode
+  v_combined:      !input grid_power_combined
+  v_import:        !input grid_power_import
+  v_export:        !input grid_power_export
+  v_factor:        !input grid_unit_factor
   v_soc:           !input marstek_soc_sensor
   v_charge_ent:    !input marstek_charge_power
   v_discharge_ent: !input marstek_discharge_power
+  v_force_mode:    !input marstek_force_mode
+  v_rs485:         !input marstek_rs485_mode
+  v_fm_charge:     !input force_mode_charge
+  v_fm_discharge:  !input force_mode_discharge
+  v_fm_standby:    !input force_mode_standby
+  v_rs485_opt:     !input rs485_option_name
   v_target:        !input target_grid_power
-  v_dead_band:     !input dead_band
-  v_gain:          !input regulation_gain
-  v_max_charge:    !input max_charge_power
-  v_max_discharge: !input max_discharge_power
+  v_dead:          !input dead_band
+  v_step_d:        !input step_discharge
+  v_step_c:        !input step_charge
+  v_max_c:         !input max_charge_power
+  v_max_d:         !input max_discharge_power
   v_min_soc:       !input min_soc_protection
+  v_max_soc:       !input max_soc_charging
   v_night_on:      !input night_reserve_enabled
   v_night_min:     !input night_min_soc
   v_night_start:   !input night_start_hour
@@ -274,30 +426,72 @@ variables:
   v_logging:       !input enable_logging
 
 
+# ================================================================
+# TRIGGER
+# ================================================================
 trigger:
   - platform: state
-    entity_id: !input grid_power_sensor
+    entity_id: !input grid_power_combined
+    for:
+      seconds: 2
+  - platform: state
+    entity_id: !input grid_power_import
+    for:
+      seconds: 2
+  - platform: state
+    entity_id: !input grid_power_export
     for:
       seconds: 2
   - platform: time_pattern
-    seconds: "/20"
+    seconds: "/15"
 
 
+# ================================================================
+# BEDINGUNG: Sensoren verfügbar
+# ================================================================
 condition:
   - condition: template
     value_template: >
-      {{ states(v_grid) not in ['unavailable', 'unknown', 'none']
-         and states(v_soc) not in ['unavailable', 'unknown', 'none'] }}
+      {{ states(v_soc) not in ['unavailable', 'unknown', 'none'] }}
 
 
+# ================================================================
+# AKTION
+# ================================================================
 action:
 
+  # ---- Schritt 1: RS485-Modus aktivieren ----
+  - action: select.select_option
+    target:
+      entity_id: !input marstek_rs485_mode
+    data:
+      option: "{{ v_rs485_opt }}"
+    continue_on_error: true
+
+  # ---- Schritt 2: Aktuelle Werte berechnen ----
   - variables:
-      grid_w:      "{{ states(v_grid) | float(0) | round(1) }}"
       soc_pct:     "{{ states(v_soc) | float(0) }}"
       charge_w:    "{{ states(v_charge_ent) | float(0) }}"
       discharge_w: "{{ states(v_discharge_ent) | float(0) }}"
-      deviation:   "{{ (states(v_grid) | float(0)) - (v_target | float(30)) }}"
+      # Netzleistung: kombiniert oder aus zwei getrennten Sensoren berechnen
+      grid_w: >
+        {% set f = v_factor | int(1) %}
+        {% if v_mode == 'getrennt' %}
+          {% set imp = states(v_import) | float(0) * f %}
+          {% set exp = states(v_export) | float(0) * f %}
+          {{ (imp - exp) | round(1) }}
+        {% else %}
+          {{ (states(v_combined) | float(0) * f) | round(1) }}
+        {% endif %}
+      deviation: >
+        {% set f = v_factor | int(1) %}
+        {% if v_mode == 'getrennt' %}
+          {% set imp = states(v_import) | float(0) * f %}
+          {% set exp = states(v_export) | float(0) * f %}
+          {{ ((imp - exp) - (v_target | float(30))) | round(1) }}
+        {% else %}
+          {{ ((states(v_combined) | float(0) * f) - (v_target | float(30))) | round(1) }}
+        {% endif %}
       is_night: >
         {% set h = now().hour %}
         {% if v_night_start | int > v_night_end | int %}
@@ -306,35 +500,27 @@ action:
           {{ h >= v_night_start | int and h < v_night_end | int }}
         {% endif %}
 
-  - action: switch.turn_on
-    target:
-      entity_id: !input marstek_mode_eigenverbrauch
-    continue_on_error: true
-
-  - action: select.select_option
-    target:
-      entity_id: !input marstek_rs485_mode
-    data:
-      option: "RS485"
-    continue_on_error: true
-
+  # ================================================================
+  # REGELLOGIK – priorisiert
+  # ================================================================
   - choose:
 
-      # PRIORITÄT 1: TIEFENTLADESCHUTZ
+      # ── P1: TIEFENTLADESCHUTZ ────────────────────────────────────
+      # SoC zu niedrig → sofort Standby
       - conditions:
           - condition: template
             value_template: "{{ soc_pct <= v_min_soc | float(10) }}"
         sequence:
+          - action: select.select_option
+            target:
+              entity_id: !input marstek_force_mode
+            data:
+              option: "{{ v_fm_standby }}"
           - action: number.set_value
             target:
               entity_id: !input marstek_discharge_power
             data:
               value: "0"
-          - action: number.set_value
-            target:
-              entity_id: !input marstek_charge_power
-            data:
-              value: "100"
           - if:
               - condition: template
                 value_template: "{{ v_logging }}"
@@ -342,12 +528,12 @@ action:
               - action: system_log.write
                 data:
                   message: >
-                    [LVA Nulleinspeisung] ⚠️ TIEFENTLADESCHUTZ –
+                    [LVA Nulleinspeisung] TIEFENTLADESCHUTZ –
                     SoC {{ soc_pct | round(1) }}% <= Mindest {{ v_min_soc }}%.
-                    Entladung gestoppt.
+                    Force Mode = Standby.
                   level: warning
 
-      # PRIORITÄT 2: NACHT-RESERVE
+      # ── P2: NACHT-RESERVE ────────────────────────────────────────
       - conditions:
           - condition: template
             value_template: >
@@ -356,14 +542,14 @@ action:
                  and (v_night_min | float(0)) > 0
                  and soc_pct <= v_night_min | float(20) }}
         sequence:
+          - action: select.select_option
+            target:
+              entity_id: !input marstek_force_mode
+            data:
+              option: "{{ v_fm_standby }}"
           - action: number.set_value
             target:
               entity_id: !input marstek_discharge_power
-            data:
-              value: "0"
-          - action: number.set_value
-            target:
-              entity_id: !input marstek_charge_power
             data:
               value: "0"
           - if:
@@ -373,33 +559,67 @@ action:
               - action: system_log.write
                 data:
                   message: >
-                    [LVA Nulleinspeisung] Nacht-Reserve –
+                    [LVA Nulleinspeisung] NACHT-RESERVE –
                     SoC {{ soc_pct | round(1) }}% <= Reserve {{ v_night_min }}%.
-                    Entladen pausiert.
+                    Force Mode = Standby.
                   level: info
 
-      # PRIORITÄT 3: NETZBEZUG -> ENTLADEN
+      # ── P3: TOTZONE – STANDBY ────────────────────────────────────
+      # Netz im Zielbereich → Marstek regelt selbst im Eigenverbrauch
+      - conditions:
+          - condition: template
+            value_template: "{{ deviation | abs <= v_dead | float(50) }}"
+        sequence:
+          - action: select.select_option
+            target:
+              entity_id: !input marstek_force_mode
+            data:
+              option: "{{ v_fm_standby }}"
+          - if:
+              - condition: template
+                value_template: "{{ v_logging }}"
+            then:
+              - action: system_log.write
+                data:
+                  message: >
+                    [LVA Nulleinspeisung] TOTZONE –
+                    Netz={{ grid_w }} W | Abw={{ deviation | round(0) }} W <= Deadband.
+                    Force Mode = Standby.
+                  level: debug
+
+      # ── P4: NETZBEZUG → ENTLADEN ─────────────────────────────────
       - conditions:
           - condition: template
             value_template: >
-              {{ deviation > (v_dead_band | float(40))
+              {{ deviation > (v_dead | float(50))
                  and soc_pct > (v_min_soc | float(10)) }}
         sequence:
           - variables:
               new_discharge: >
-                {{ [ [ (discharge_w + (deviation * (v_gain | float(1.0)))) | round(0) | int,
-                        v_max_discharge | int ] | min,
-                      0 ] | max }}
-          - action: number.set_value
+                {{ [ [ discharge_w + (v_step_d | float(100)),
+                        v_max_d | float(2400) ] | min,
+                      0 ] | max | round(0) | int }}
+          # Force Mode auf Entladen setzen
+          - action: select.select_option
             target:
-              entity_id: !input marstek_discharge_power
+              entity_id: !input marstek_force_mode
             data:
-              value: "{{ new_discharge }}"
+              option: "{{ v_fm_discharge }}"
+          # Ladeleistung auf 0 setzen (Gegenrichtung immer nullen!)
           - action: number.set_value
             target:
               entity_id: !input marstek_charge_power
             data:
               value: "0"
+          # Entladeleistung schrittweise erhöhen
+          - action: number.set_value
+            target:
+              entity_id: !input marstek_discharge_power
+            data:
+              value: "{{ new_discharge }}"
+          # Warten damit Marstek reagieren kann
+          - delay:
+              seconds: "{{ v_delay | default(7) }}"
           - if:
               - condition: template
                 value_template: "{{ v_logging }}"
@@ -409,33 +629,45 @@ action:
                   message: >
                     [LVA Nulleinspeisung] ENTLADEN –
                     Netz={{ grid_w }} W | Abw={{ deviation | round(0) }} W |
-                    SoC={{ soc_pct }}% -> Entlade={{ new_discharge }} W
+                    SoC={{ soc_pct }}% |
+                    Force={{ v_fm_discharge }} | Entlade={{ new_discharge }} W
                   level: info
 
-      # PRIORITÄT 4: EINSPEISUNG -> LADEN
+      # ── P5: EINSPEISUNG → LADEN ───────────────────────────────────
       - conditions:
           - condition: template
             value_template: >
-              {{ deviation < ((v_dead_band | float(40)) * -1) }}
+              {{ deviation < ((v_dead | float(50)) * -1)
+                 and soc_pct < (v_max_soc | float(95)) }}
         sequence:
           - variables:
-              excess_w: "{{ (deviation | abs) | round(0) | int }}"
               raw_charge: >
-                {{ [ [ (charge_w + (excess_w * (v_gain | float(1.0)))) | round(0) | int,
-                        v_max_charge | int ] | min,
-                      0 ] | max }}
+                {{ [ [ charge_w + (v_step_c | float(80)),
+                        v_max_c | float(2400) ] | min,
+                      0 ] | max | round(0) | int }}
+              # Netzladen-Sperre: kein Laden wenn Netz positiv (Bezug)
               new_charge: >
                 {{ 0 if (v_no_grid_chg and grid_w > 50) else raw_charge }}
-          - action: number.set_value
+          # Force Mode auf Laden setzen
+          - action: select.select_option
             target:
-              entity_id: !input marstek_charge_power
+              entity_id: !input marstek_force_mode
             data:
-              value: "{{ new_charge }}"
+              option: "{{ v_fm_charge }}"
+          # Entladeleistung auf 0 setzen
           - action: number.set_value
             target:
               entity_id: !input marstek_discharge_power
             data:
               value: "0"
+          # Ladeleistung schrittweise erhöhen
+          - action: number.set_value
+            target:
+              entity_id: !input marstek_charge_power
+            data:
+              value: "{{ new_charge }}"
+          - delay:
+              seconds: "{{ v_delay | default(7) }}"
           - if:
               - condition: template
                 value_template: "{{ v_logging }}"
@@ -444,41 +676,10 @@ action:
                 data:
                   message: >
                     [LVA Nulleinspeisung] LADEN –
-                    Netz={{ grid_w }} W | Ueberschuss={{ excess_w }} W |
-                    Netzladen-Sperre={{ v_no_grid_chg }} -> Lade={{ new_charge }} W
+                    Netz={{ grid_w }} W | Abw={{ deviation | round(0) }} W |
+                    Netzladen-Sperre={{ v_no_grid_chg }} |
+                    Force={{ v_fm_charge }} | Lade={{ new_charge }} W
                   level: info
-
-      # PRIORITÄT 5: TOTZONE – FEINJUSTIERUNG
-      - conditions:
-          - condition: template
-            value_template: "{{ deviation | abs <= v_dead_band | float(40) }}"
-        sequence:
-          - variables:
-              fine: "{{ (deviation * 0.3) | round(0) | int }}"
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: >
-                      {{ fine > 15 and soc_pct > (v_min_soc | float(10)) }}
-                sequence:
-                  - action: number.set_value
-                    target:
-                      entity_id: !input marstek_discharge_power
-                    data:
-                      value: >
-                        {{ [ [ discharge_w + fine, v_max_discharge | int ] | min,
-                              0 ] | max | int }}
-              - conditions:
-                  - condition: template
-                    value_template: "{{ fine < -15 }}"
-                sequence:
-                  - action: number.set_value
-                    target:
-                      entity_id: !input marstek_charge_power
-                    data:
-                      value: >
-                        {{ [ [ charge_w + (fine | abs), v_max_charge | int ] | min,
-                              0 ] | max | int }}
 
 mode: single
 max_exceeded: silent
