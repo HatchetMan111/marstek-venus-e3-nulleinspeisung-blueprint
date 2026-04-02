@@ -96,16 +96,16 @@ blueprint:
         grid_unit_factor:
           name: "Einheit des Netz-Sensors"
           description: >
-            Watt (W) = Faktor 1.
-            Kilowatt (kW) = Faktor 1000 – wird automatisch umgerechnet.
-          default: 1
+            Watt (W) = kein Umrechnen (Shelly EM, Eastron SDM).
+            Kilowatt (kW) = wird mit 1000 multipliziert (Tibber Pulse, Discovergy).
+          default: "1"
           selector:
             select:
               options:
                 - label: "Watt (W) – kein Umrechnen"
-                  value: 1
-                - label: "Kilowatt (kW) → mal 1000"
-                  value: 1000
+                  value: "1"
+                - label: "Kilowatt (kW) → automatisch mal 1000"
+                  value: "1000"
 
     # ================================================================
     # SEKTION 2: MARSTEK ENTITÄTEN
@@ -172,22 +172,28 @@ blueprint:
       input:
         force_mode_charge:
           name: "Option für Laden"
-          description: "Exakter Text der Laden-Option (Groß/Kleinschreibung beachten)"
-          default: "Laden"
+          description: >
+            Exakter Text der Laden-Option deiner Force-Mode-Entity.
+            Standard Marstek Venus Modbus Integration: charge
+          default: "charge"
           selector:
             text:
 
         force_mode_discharge:
           name: "Option für Entladen"
-          description: "Exakter Text der Entladen-Option"
-          default: "Entladen"
+          description: >
+            Exakter Text der Entladen-Option.
+            Standard Marstek Venus Modbus Integration: discharge
+          default: "discharge"
           selector:
             text:
 
         force_mode_standby:
           name: "Option für Standby"
-          description: "Exakter Text der Standby-Option (Marstek regelt selbst)"
-          default: "Standby"
+          description: >
+            Exakter Text der Standby-Option (Marstek regelt selbst im Eigenverbrauch).
+            Standard Marstek Venus Modbus Integration: standby
+          default: "standby"
           selector:
             text:
 
@@ -475,7 +481,7 @@ action:
       discharge_w: "{{ states(v_discharge_ent) | float(0) }}"
       # Netzleistung: kombiniert oder aus zwei getrennten Sensoren berechnen
       grid_w: >
-        {% set f = v_factor | int(1) %}
+        {% set f = v_factor | string | int(1) %}
         {% if v_mode == 'getrennt' %}
           {% set imp = states(v_import) | float(0) * f %}
           {% set exp = states(v_export) | float(0) * f %}
@@ -484,7 +490,7 @@ action:
           {{ (states(v_combined) | float(0) * f) | round(1) }}
         {% endif %}
       deviation: >
-        {% set f = v_factor | int(1) %}
+        {% set f = v_factor | string | int(1) %}
         {% if v_mode == 'getrennt' %}
           {% set imp = states(v_import) | float(0) * f %}
           {% set exp = states(v_export) | float(0) * f %}
