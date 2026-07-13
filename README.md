@@ -5,7 +5,6 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![HA Version](https://img.shields.io/badge/Home%20Assistant-2024.6%2B-blue)](https://www.home-assistant.io/)
-[![Developed by](https://img.shields.io/badge/Entwickelt%20von-LichtValleyApps.de-FFD234?style=flat)](https://lichtvalleyapps.de)
 
 ---
 
@@ -79,7 +78,7 @@ template:
 ### Option 2: Manuell
 
 1. YAML-Datei herunterladen: [`marstek_venus_e3_nulleinspeisung.yaml`](blueprints/automation/marstek_venus_e3_nulleinspeisung.yaml)
-2. Datei nach `config/blueprints/automation/lichtvalleyapps/` kopieren
+2. Datei nach `config/blueprints/automation/ kopieren
 3. Home Assistant neu laden: **Entwicklertools → YAML neu laden → Blueprints**
 4. **Einstellungen → Automatisierungen → + Erstellen → Aus Blueprint**
 
@@ -175,11 +174,11 @@ MIT License – Details siehe [LICENSE](LICENSE)
 
 ## ⚡ Entwickelt von
 
-**[LichtValleyApps.de](https://lichtvalleyapps.de)**  
+
 SmartHome-Integration & Eigenverbrauchsoptimierung  
 Für Privathäuser, Höfe und Kleinunternehmen
 
-> 💡 *LichtValleyApps führt keine Elektroinstallationsarbeiten durch –  
+> 💡 Keine Elektroinstallationsarbeiten durch –  
 > ausschließlich SmartHome-Integration zur Eigenverbrauchsoptimierung.*
 
 ---
