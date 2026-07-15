@@ -29,10 +29,10 @@ blueprint:
     • 🎯 Konfigurierbares Deadband
 
 
-    ⚡ Entwickelt von [LichtValleyApps.de](https://lichtvalleyapps.de)
+    ⚡ 
 
   domain: automation
-  author: "LichtValleyApps.de"
+  author: 
   source_url: "https://github.com/HatchetMan111/marstek-venus-e3-nulleinspeisung-blueprint/blob/main/blueprints/automation/marstek_venus_e3_nulleinspeisung.yaml"
   homeassistant:
     min_version: "2024.6.0"
