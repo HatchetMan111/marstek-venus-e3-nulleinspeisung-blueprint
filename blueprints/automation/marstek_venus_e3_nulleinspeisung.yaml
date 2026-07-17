@@ -3,11 +3,17 @@ blueprint:
   description: >
     **Dynamische Nulleinspeisung für den Marstek Venus E3.**
 
+    Regelt Laden/Entladen über den **Force Mode** (Select) und den
+    **RS485-Steuermodus** (Switch) – beide werden automatisch gesetzt.
+    Ohne diese beiden Entitäten funktioniert die Steuerung über Home
+    Assistant nicht.
 
-    Regelt Laden/Entladen über den **Force Mode** und den **RS485-Steuermodus**
-    – beides wird automatisch gesetzt. Ohne diese beiden Entitäten funktioniert
-    die Steuerung über Home Assistant nicht.
-
+    ⚠️ **Wichtiger Hinweis zur Integration "Marstek Venus Modbus" (ViperRNMC):**
+    In dieser Integration ist der RS485-Steuermodus (Register 42000) ein
+    **Switch** (An/Aus), kein Auswahlfeld! Bei anderen Integrationen
+    (z. B. Omnibattery / "Intelligent Battery Control for Marstek Venus E")
+    kann derselbe Modus als Select-Entität vorliegen. Dieses Blueprint
+    erwartet ab dieser Version einen Switch (siehe Sektion 2).
 
     **Regelablauf:**
 
@@ -141,22 +147,42 @@ blueprint:
         marstek_force_mode:
           name: "⚡ Force Mode (Select) – PFLICHT"
           description: >
-            Select: 'Force Mode' mit Optionen Laden / Entladen / Standby.
+            Select: 'Force Mode' mit Optionen None/Charge/Discharge
+            (bei manchen Integrationen deutsch: Standby/Laden/Entladen).
             Dies ist der Hauptschalter – ohne diese Entität funktioniert
-            die Steuerung NICHT.
+            die Steuerung NICHT. Prüfe die exakten Optionsnamen unter
+            Entwicklertools → Zustände → deine Force-Mode-Entität
+            → Attribut "options" und trage sie in Sektion 3 ein.
           selector:
             entity:
               domain: select
 
         marstek_rs485_mode:
-          name: "🔌 RS485-Steuermodus (Select) – PFLICHT"
+          name: "🔌 RS485-Steuermodus (Switch) – PFLICHT"
           description: >
-            Select: 'RS485-Steuermodus'.
-            Muss auf RS485 stehen, sonst ignoriert der Marstek alle Befehle.
-            Wird automatisch aktiviert.
+            Switch: 'RS485-Steuermodus' bzw. 'RS485 Control Mode'
+            (z. B. switch.marstek_venus_e_rs485_control_mode).
+
+            ⚠️ Bei der Integration "Marstek Venus Modbus" (ViperRNMC,
+            github.com/ViperRNMC/marstek_venus_modbus) liegt Register 42000
+            als SWITCH vor, nicht als Select! Deshalb wurde hier bewusst
+            domain: switch verwendet – nur so findet Home Assistant die
+            richtige Entität in der Auswahlliste.
+
+            Muss eingeschaltet sein, sonst ignoriert der Marstek alle
+            Befehle in den Registern 42000–42999 (Force Mode, Lade-/
+            Entladeleistung etc.). Wird automatisch eingeschaltet und bei
+            jedem Regelzyklus erneut bestätigt (Keep-Alive).
+
+            Nutzt du stattdessen die Integration "Omnibattery" oder
+            "Intelligent Battery Control for Marstek Venus E", bei der der
+            RS485-Modus als Select-Entität vorliegt: Lege dort einfach einen
+            Hilfs-Switch (Template-Switch) an, der beim Einschalten die
+            passende Select-Option setzt, und wähle diesen Hilfs-Switch hier
+            aus.
           selector:
             entity:
-              domain: select
+              domain: switch
 
     # ================================================================
     # SEKTION 3: FORCE MODE OPTIONSNAMEN
@@ -167,14 +193,20 @@ blueprint:
       collapsed: true
       description: >
         Die exakten Optionsnamen deiner Force-Mode-Select-Entität.
-        Prüfe sie unter Entwicklertools → Zustände.
-        Standard: Laden / Entladen / Standby.
+        Prüfe sie unter Entwicklertools → Zustände → deine Force-Mode-
+        Entität → Attribut "options" (rechts als Liste sichtbar).
+
+        Bei der Integration "Marstek Venus Modbus" (ViperRNMC) lauten die
+        Werte laut Register-Definition None / Charge / Discharge – trage
+        hier exakt das ein, was in "options" steht (Groß-/Kleinschreibung
+        beachten!). Bei anderen Integrationen können die Bezeichnungen
+        abweichen (z. B. deutsch "Standby" statt "None").
       input:
         force_mode_charge:
           name: "Option für Laden"
           description: >
             Exakter Text der Laden-Option deiner Force-Mode-Entity.
-            Standard Marstek Venus Modbus Integration: charge
+            Marstek Venus Modbus (ViperRNMC): Charge
           default: "charge"
           selector:
             text:
@@ -183,7 +215,7 @@ blueprint:
           name: "Option für Entladen"
           description: >
             Exakter Text der Entladen-Option.
-            Standard Marstek Venus Modbus Integration: discharge
+            Marstek Venus Modbus (ViperRNMC): Discharge
           default: "discharge"
           selector:
             text:
@@ -191,16 +223,9 @@ blueprint:
         force_mode_standby:
           name: "Option für Standby"
           description: >
-            Exakter Text der Standby-Option (Marstek regelt selbst im Eigenverbrauch).
-            Standard Marstek Venus Modbus Integration: standby
+            Exakter Text der Standby-/Aus-Option (Marstek regelt selbst im
+            Eigenverbrauch). Marstek Venus Modbus (ViperRNMC): None
           default: "standby"
-          selector:
-            text:
-
-        rs485_option_name:
-          name: "Option für RS485-Steuermodus"
-          description: "Exakter Text der RS485-Option im RS485-Steuermodus-Select"
-          default: "RS485"
           selector:
             text:
 
@@ -415,7 +440,6 @@ variables:
   v_fm_charge:     !input force_mode_charge
   v_fm_discharge:  !input force_mode_discharge
   v_fm_standby:    !input force_mode_standby
-  v_rs485_opt:     !input rs485_option_name
   v_target:        !input target_grid_power
   v_dead:          !input dead_band
   v_step_d:        !input step_discharge
@@ -430,6 +454,7 @@ variables:
   v_night_end:     !input night_end_hour
   v_no_grid_chg:   !input prevent_grid_charging
   v_logging:       !input enable_logging
+  v_delay:         !input delay_after_step
 
 
 # ================================================================
@@ -466,12 +491,13 @@ condition:
 # ================================================================
 action:
 
-  # ---- Schritt 1: RS485-Modus aktivieren ----
-  - action: select.select_option
+  # ---- Schritt 1: RS485-Modus aktivieren (Switch einschalten) ----
+  # WICHTIG: Dies ist bewusst switch.turn_on und nicht select.select_option,
+  # da die Integration "Marstek Venus Modbus" (ViperRNMC) das Register 42000
+  # als Switch (An/Aus) abbildet, nicht als Auswahlfeld.
+  - action: switch.turn_on
     target:
       entity_id: !input marstek_rs485_mode
-    data:
-      option: "{{ v_rs485_opt }}"
     continue_on_error: true
 
   # ---- Schritt 2: Aktuelle Werte berechnen ----
