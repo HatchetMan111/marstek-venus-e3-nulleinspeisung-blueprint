@@ -8,13 +8,6 @@ blueprint:
     Ohne diese beiden Entitäten funktioniert die Steuerung über Home
     Assistant nicht.
 
-    ⚠️ **Wichtiger Hinweis zur Integration "Marstek Venus Modbus" (ViperRNMC):**
-    In dieser Integration ist der RS485-Steuermodus (Register 42000) ein
-    **Switch** (An/Aus), kein Auswahlfeld! Bei anderen Integrationen
-    (z. B. Omnibattery / "Intelligent Battery Control for Marstek Venus E")
-    kann derselbe Modus als Select-Entität vorliegen. Dieses Blueprint
-    erwartet ab dieser Version einen Switch (siehe Sektion 2).
-
     **Regelablauf:**
 
     • Netzbezug → Force Mode = Entladen, Entladeleistung wird schrittweise erhöht
@@ -160,26 +153,10 @@ blueprint:
         marstek_rs485_mode:
           name: "🔌 RS485-Steuermodus (Switch) – PFLICHT"
           description: >
-            Switch: 'RS485-Steuermodus' bzw. 'RS485 Control Mode'
-            (z. B. switch.marstek_venus_e_rs485_control_mode).
-
-            ⚠️ Bei der Integration "Marstek Venus Modbus" (ViperRNMC,
-            github.com/ViperRNMC/marstek_venus_modbus) liegt Register 42000
-            als SWITCH vor, nicht als Select! Deshalb wurde hier bewusst
-            domain: switch verwendet – nur so findet Home Assistant die
-            richtige Entität in der Auswahlliste.
-
-            Muss eingeschaltet sein, sonst ignoriert der Marstek alle
-            Befehle in den Registern 42000–42999 (Force Mode, Lade-/
-            Entladeleistung etc.). Wird automatisch eingeschaltet und bei
-            jedem Regelzyklus erneut bestätigt (Keep-Alive).
-
-            Nutzt du stattdessen die Integration "Omnibattery" oder
-            "Intelligent Battery Control for Marstek Venus E", bei der der
-            RS485-Modus als Select-Entität vorliegt: Lege dort einfach einen
-            Hilfs-Switch (Template-Switch) an, der beim Einschalten die
-            passende Select-Option setzt, und wähle diesen Hilfs-Switch hier
-            aus.
+            Switch: 'RS485-Steuermodus' (z. B. switch.marstek_venus_e_rs485_control_mode).
+            Muss eingeschaltet sein, sonst ignoriert der Marstek alle Befehle.
+            Wird automatisch eingeschaltet und bei jedem Regelzyklus erneut
+            bestätigt.
           selector:
             entity:
               domain: switch
@@ -194,13 +171,8 @@ blueprint:
       description: >
         Die exakten Optionsnamen deiner Force-Mode-Select-Entität.
         Prüfe sie unter Entwicklertools → Zustände → deine Force-Mode-
-        Entität → Attribut "options" (rechts als Liste sichtbar).
-
-        Bei der Integration "Marstek Venus Modbus" (ViperRNMC) lauten die
-        Werte laut Register-Definition None / Charge / Discharge – trage
-        hier exakt das ein, was in "options" steht (Groß-/Kleinschreibung
-        beachten!). Bei anderen Integrationen können die Bezeichnungen
-        abweichen (z. B. deutsch "Standby" statt "None").
+        Entität → Attribut "options" (rechts als Liste sichtbar) und
+        trage sie hier exakt ein (Groß-/Kleinschreibung beachten).
       input:
         force_mode_charge:
           name: "Option für Laden"
@@ -560,7 +532,7 @@ action:
               - action: system_log.write
                 data:
                   message: >
-                    [LVA Nulleinspeisung] TIEFENTLADESCHUTZ –
+                    [Marstek Nulleinspeisung] TIEFENTLADESCHUTZ –
                     SoC {{ soc_pct | round(1) }}% <= Mindest {{ v_min_soc }}%.
                     Force Mode = Standby.
                   level: warning
@@ -591,7 +563,7 @@ action:
               - action: system_log.write
                 data:
                   message: >
-                    [LVA Nulleinspeisung] NACHT-RESERVE –
+                    [Marstek Nulleinspeisung] NACHT-RESERVE –
                     SoC {{ soc_pct | round(1) }}% <= Reserve {{ v_night_min }}%.
                     Force Mode = Standby.
                   level: info
@@ -614,7 +586,7 @@ action:
               - action: system_log.write
                 data:
                   message: >
-                    [LVA Nulleinspeisung] TOTZONE –
+                    [Marstek Nulleinspeisung] TOTZONE –
                     Netz={{ grid_w }} W | Abw={{ deviation | round(0) }} W <= Deadband.
                     Force Mode = Standby.
                   level: debug
@@ -659,7 +631,7 @@ action:
               - action: system_log.write
                 data:
                   message: >
-                    [LVA Nulleinspeisung] ENTLADEN –
+                    [Marstek Nulleinspeisung] ENTLADEN –
                     Netz={{ grid_w }} W | Abw={{ deviation | round(0) }} W |
                     SoC={{ soc_pct }}% |
                     Force={{ v_fm_discharge }} | Entlade={{ new_discharge }} W
@@ -707,7 +679,7 @@ action:
               - action: system_log.write
                 data:
                   message: >
-                    [LVA Nulleinspeisung] LADEN –
+                    [Marstek Nulleinspeisung] LADEN –
                     Netz={{ grid_w }} W | Abw={{ deviation | round(0) }} W |
                     Netzladen-Sperre={{ v_no_grid_chg }} |
                     Force={{ v_fm_charge }} | Lade={{ new_charge }} W
