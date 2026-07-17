@@ -12,7 +12,7 @@
 
 Dieser Blueprint regelt den **Marstek Venus E3 Heimspeicher** vollautomatisch, sodass du **keinen Strom ins Netz einspeist** und deinen Eigenverbrauch maximierst.
 
-Er misst kontinuierlich die aktuelle Netzleistung und passt die Lade- und Entladeleistung des Speichers in Echtzeit an.
+Er misst kontinuierlich die aktuelle Netzleistung und passt die Lade- und Entladeleistung des Speichers in Echtzeit an – über die Register **Force Mode** und **RS485-Steuermodus** deiner Marstek-Integration.
 
 ---
 
@@ -25,7 +25,7 @@ Er misst kontinuierlich die aktuelle Netzleistung und passt die Lade- und Entlad
 | ⚠️ Tiefentladeschutz | Entladung stoppt unter konfigurierbarem Mindest-SoC |
 | 🌙 Nacht-Reserve | Hält SoC-Reserve für den Morgen zurück |
 | 🔒 Netzladen-Sperre | Batterie wird nicht teuer aus dem Netz geladen |
-| 🎯 Totzone/Hysterese | Verhindert ständiges Reglern bei stabiler Lage |
+| 🎯 Totzone/Hysterese | Verhindert ständiges Regeln bei stabiler Lage |
 | 🛠️ Diagnose-Logging | Optionale Log-Ausgabe für Fehlersuche |
 
 ---
@@ -33,23 +33,29 @@ Er misst kontinuierlich die aktuelle Netzleistung und passt die Lade- und Entlad
 ## 🔧 Voraussetzungen
 
 - **Home Assistant** 2024.6 oder neuer
-- **Marstek Venus E3** in Home Assistant integriert (Modbus/RS485-Integration)
+- **Marstek Venus E3** in Home Assistant integriert, z. B. über [Marstek Venus Modbus (ViperRNMC)](https://github.com/ViperRNMC/marstek_venus_modbus)
 - **Netzmessgerät** mit HA-Integration, das Netzbezug und Einspeisung misst
+
+> ⚠️ Je nach genutzter Marstek-Integration heißen die Entitäten unterschiedlich und liegen in unterschiedlichen Domains vor (z. B. RS485-Steuermodus als **Switch** bei ViperRNMC, als **Select** bei manchen anderen Integrationen). Prüfe deine Entitäten unter Entwicklertools → Zustände, bevor du das Blueprint konfigurierst.
 
 ### Kompatible Netzmessgeräte (Beispiele)
 
 | Gerät | Typ | Hinweis |
 |---|---|---|
-| Shelly EM / 3EM | WLAN-Stromzähler | Direkt kompatibel |
-| Eastron SDM630 | RS485-Zähler | Direkt kompatibel |
+| Shelly EM / 3EM | WLAN-Stromzähler | Direkt kompatibel (kombinierter Sensor) |
+| Eastron SDM630 | RS485-Zähler | Direkt kompatibel (kombinierter Sensor) |
 | Holley DTZ541 | Smart Meter | Direkt kompatibel |
-| ISKRA MT174 | Smart Meter | Direkt kompatibel |
-| **Tibber Pulse** | IR-Lesekopf | ⚠️ Siehe Hinweis unten |
-| Discovergy | Cloud-API | Funktioniert, höhere Latenz |
+| ISKRA MT174 | Smart Meter | Getrennte Sensoren (Bezug + Einspeisung) |
+| **Tibber Pulse** | IR-Lesekopf | Getrennte Sensoren – siehe Hinweis unten |
+| Discovergy | Cloud-API | Getrennte Sensoren, höhere Latenz |
 
-#### ⚠️ Tibber Pulse – Wichtiger Hinweis
+Das Blueprint unterstützt beide Varianten direkt über den Schalter **"Sensor-Typ"** (Kombiniert / Getrennt) – ein zusätzlicher Template-Sensor ist normalerweise **nicht** mehr nötig.
 
-Tibber Pulse liefert oft **zwei separate Sensoren** (Bezug + Einspeisung). Du brauchst einen kombinierten Sensor. Füge diesen Template-Sensor in deine `configuration.yaml` ein:
+#### ⚠️ Tibber Pulse – Hinweis
+
+Tibber Pulse liefert zwei separate Sensoren (Bezug + Einspeisung, z. B. `sensor.power_consumption` und `sensor.power_production`). Wähle im Blueprint einfach **Sensor-Typ = Getrennt** und trage beide Sensoren getrennt ein – kein zusätzlicher Template-Sensor erforderlich.
+
+Falls du dennoch einen kombinierten Sensor bevorzugst, kannst du optional folgenden Template-Sensor in deine `configuration.yaml` einfügen:
 
 ```yaml
 template:
@@ -64,8 +70,8 @@ template:
            - states('sensor.power_production') | float(0) }}
 ```
 
-> Ersetze die Entity-IDs durch deine tatsächlichen Tibber-Sensornamen.  
-> Danach HA neu laden – dann erscheint `sensor.netzleistung_netto` zur Auswahl im Blueprint.
+> Ersetze die Entity-IDs durch deine tatsächlichen Tibber-Sensornamen.
+> Danach HA neu laden – dann erscheint `sensor.netzleistung_netto` zur Auswahl im Blueprint (Sensor-Typ = Kombiniert).
 
 ---
 
@@ -78,9 +84,11 @@ template:
 ### Option 2: Manuell
 
 1. YAML-Datei herunterladen: [`marstek_venus_e3_nulleinspeisung.yaml`](blueprints/automation/marstek_venus_e3_nulleinspeisung.yaml)
-2. Datei nach `config/blueprints/automation/ kopieren
-3. Home Assistant neu laden: **Entwicklertools → YAML neu laden → Blueprints**
+2. Datei nach `config/blueprints/automation/` kopieren
+3. Home Assistant neu laden: **Entwicklertools → YAML → Blueprints neu laden**
 4. **Einstellungen → Automatisierungen → + Erstellen → Aus Blueprint**
+
+> 🔄 **Update-Hinweis:** Ein einmal importiertes Blueprint wird **nicht** automatisch aktualisiert, wenn sich die Datei auf GitHub ändert. Nutze bei per URL importierten Blueprints die Funktion **"Blueprint erneut importieren"** (drei Punkte am Blueprint), um die neueste Version zu ziehen. Bestehende Automatisierungen übernehmen die aktualisierte Logik automatisch, sobald die lokale Blueprint-Datei aktualisiert ist.
 
 ---
 
@@ -92,23 +100,26 @@ Nach dem Import die Automatisierung anlegen und folgende Werte zuweisen:
 
 | Feld | Beschreibung |
 |---|---|
-| Netzleistung Sensor | Dein Stromzähler-Sensor (positiv = Bezug, negativ = Einspeisung) |
-| Batterie-Ladezustand | `sensor.batterie_ladezustand` vom Marstek |
-| Ladeleistung einstellen | `number.ladeleistung_einstellen` vom Marstek |
-| Entladeleistung einstellen | `number.entladeleistung_einstellen` vom Marstek |
-| Modus Eigenverbrauch | `switch.modus_eigenverbrauch` vom Marstek |
-| RS485-Steuermodus | `select.rs485_steuermodus` vom Marstek |
+| Sensor-Typ | Kombiniert (ein Sensor) oder Getrennt (zwei Sensoren) |
+| Netzleistung(s-Sensor/en) | Je nach Sensor-Typ ein oder zwei Sensoren |
+| Batterie-Ladezustand | SoC-Sensor vom Marstek (z. B. `sensor.batterie_ladezustand`) |
+| Ladeleistung einstellen | Number-Entität vom Marstek |
+| Entladeleistung einstellen | Number-Entität vom Marstek |
+| **Force Mode** | **Select**-Entität vom Marstek (Hauptschalter Laden/Entladen/Standby) |
+| **RS485-Steuermodus** | **Switch**-Entität vom Marstek – bei ViperRNMC z. B. `switch.marstek_venus_e_rs485_control_mode` |
 
 ### Empfohlene Einstellungen (Standardwerte)
 
 | Parameter | Standard | Empfehlung |
 |---|---|---|
 | Ziel-Netzleistung | 30 W | 0–50 W (Sicherheitspuffer) |
-| Totzone | 40 W | 30–60 W |
-| Regelungsverstärkung | 1.1 | 1.0–1.2 |
+| Totzone / Deadband | 50 W | 30–60 W |
+| Schrittweite Entladen | 100 W | 80–150 W |
+| Schrittweite Laden | 80 W | 70–120 W |
+| Verzögerung nach Regelschritt | 7 s | 5–10 s |
 | Max. Ladeleistung | 2400 W | ≤ 2500 W |
 | Max. Entladeleistung | 2400 W | ≤ 2500 W |
-| Tiefentladeschutz | 10 % | 10–15 % |
+| Tiefentladeschutz (Mindest-SoC) | 10 % | 10–15 % |
 | Nacht-Reserve | 20 % | 15–30 % |
 
 ---
@@ -116,14 +127,16 @@ Nach dem Import die Automatisierung anlegen und folgende Werte zuweisen:
 ## 🧠 Wie funktioniert die Regellogik?
 
 ```
-Alle 20 Sekunden / bei Sensor-Änderung:
+Alle 15 Sekunden / bei Sensor-Änderung:
 │
-├─ SoC ≤ Mindest-SoC?          → 🛑 Entladen stopp, 100 W Laden
-├─ Nacht & SoC ≤ Nacht-Reserve? → 🌙 Alles pausieren
-├─ Netz > Ziel + Totzone?       → ⚡ Entladeleistung erhöhen
-├─ Netz < Ziel - Totzone?       → 🔋 Ladeleistung erhöhen
-└─ In der Totzone?              → 🎯 Sanfte 30%-Feinjustierung
+├─ P1: SoC ≤ Mindest-SoC?               → 🛑 Force Mode = Standby, Entladen = 0
+├─ P2: Nacht & SoC ≤ Nacht-Reserve?     → 🌙 Force Mode = Standby, Entladen = 0
+├─ P3: Abweichung innerhalb Totzone?    → 🎯 Force Mode = Standby (Eigenregelung Marstek)
+├─ P4: Netzbezug über Totzone?          → ⚡ Force Mode = Entladen, Leistung +Schrittweite
+└─ P5: Einspeisung über Totzone?        → 🔋 Force Mode = Laden, Leistung +Schrittweite
 ```
+
+Die Prioritäten P1–P5 werden in dieser Reihenfolge geprüft; die erste zutreffende Bedingung gewinnt. Vor jedem Regelzyklus wird zusätzlich der RS485-Steuermodus (Switch) eingeschaltet, da der Marstek sonst alle Befehle ignoriert.
 
 ---
 
@@ -143,18 +156,22 @@ Alle 20 Sekunden / bei Sensor-Änderung:
 ## 🐛 Fehlerbehebung
 
 **Blueprint-Import schlägt fehl:**
-Stelle sicher, dass du `my.home-assistant.io` in deiner HA-Instanz aktiviert hast:  
-Einstellungen → System → Home Assistant Cloud → Lokale Instanz-URL
+Stelle sicher, dass die Verknüpfung mit my.home-assistant.io aktiv ist: Einstellungen → System → Netzwerk. Alternativ die YAML-Datei manuell nach `config/blueprints/automation/` kopieren (Option 2 oben).
 
-**RS485-Steuermodus funktioniert nicht:**
-Prüfe den exakten Options-Namen in deiner Marstek-Integration unter  
-Entwicklertools → Zustände → nach `rs485` suchen.
+**"Invalid blueprint: expected str … Got None":**
+Ein Feld im Blueprint-Kopf (z. B. `author`) ist leer statt mit einem Text oder ganz weggelassen. Entweder einen Textwert eintragen oder die Zeile entfernen.
+
+**RS485-Steuermodus wird nicht gefunden / keine passende Entität:**
+Prüfe zuerst die Domain deiner Entität unter Entwicklertools → Zustände. Bei der Integration "Marstek Venus Modbus" (ViperRNMC) ist es ein **Switch**, kein Select – das Blueprint erwartet entsprechend `domain: switch`. Nutzt du eine andere Integration mit Select-Entität, lege einen Hilfs-Switch (Template-Switch) an, der die passende Select-Option setzt.
+
+**Force Mode reagiert nicht / falscher Options-Text:**
+Prüfe den exakten Options-Namen unter Entwicklertools → Zustände → deine Force-Mode-Entität → Attribut `options`. Bei ViperRNMC lauten die Werte `None` / `Charge` / `Discharge` (Groß-/Kleinschreibung beachten).
 
 **Regler schwingt (lädt/entlädt ständig abwechselnd):**
-Totzone auf 60–80 W erhöhen, Verstärkung auf 0.9 reduzieren.
+Totzone auf 60–80 W erhöhen, Schrittweiten verringern, Verzögerung nach Regelschritt erhöhen (8–10 s).
 
 **Einspeisung trotz aktivem Blueprint:**
-Ziel-Netzleistung auf 50 W setzen, Totzone auf 50 W.
+Ziel-Netzleistung auf 50 W setzen, Totzone auf 50 W, prüfen ob RS485-Steuermodus (Switch) tatsächlich eingeschaltet ist.
 
 ---
 
@@ -163,6 +180,7 @@ Ziel-Netzleistung auf 50 W setzen, Totzone auf 50 W.
 | Version | Datum | Änderung |
 |---|---|---|
 | 1.0.0 | 2025-04 | Erstveröffentlichung |
+| 1.1.0 | 2026-07 | Fix: RS485-Steuermodus als Switch statt Select (ViperRNMC-Integration); Fix: fehlende Verzögerungs-Variable (`delay_after_step` wurde nicht verwendet); `author`-Feld korrigiert; README an tatsächliche Blueprint-Felder angepasst |
 
 ---
 
@@ -174,12 +192,7 @@ MIT License – Details siehe [LICENSE](LICENSE)
 
 ## ⚡ Entwickelt von
 
-
-SmartHome-Integration & Eigenverbrauchsoptimierung  
-Für Privathäuser, Höfe und Kleinunternehmen
-
-> 💡 Keine Elektroinstallationsarbeiten durch –  
-> ausschließlich SmartHome-Integration zur Eigenverbrauchsoptimierung.*
+**TheHatchetMan**
 
 ---
 
