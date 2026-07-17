@@ -38,7 +38,7 @@ blueprint:
     ⚡ 
 
   domain: automation
-  author: 
+  author: "TheHatchetMan"
   source_url: "https://github.com/HatchetMan111/marstek-venus-e3-nulleinspeisung-blueprint/blob/main/blueprints/automation/marstek_venus_e3_nulleinspeisung.yaml"
   homeassistant:
     min_version: "2024.6.0"
